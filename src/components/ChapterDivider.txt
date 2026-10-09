@@ -1,0 +1,21 @@
+interface Props {
+  isFirst: boolean
+}
+
+/** 极简章节分隔线，第一章前不显示 */
+export default function ChapterDivider({ isFirst }: Props) {
+  if (isFirst) return null
+
+  return (
+    <div
+      style={{
+        width: '100%',
+        maxWidth: 680,
+        padding: '6px 0',
+        userSelect: 'none',
+      }}
+    >
+      <div style={{ height: 1, background: 'var(--border)', opacity: 0.5 }} />
+    </div>
+  )
+}

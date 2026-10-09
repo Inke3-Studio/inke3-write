@@ -1,0 +1,82 @@
+import { useEffect, useState, useCallback } from 'react'
+import { supabase } from '@/lib/supabase'
+import { countWords } from '@/lib/utils'
+import type { BookChapter } from '@/lib/types'
+
+export function useBookChapters(bookId: string | null, userId: string | undefined) {
+  const [chapters, setChapters] = useState<BookChapter[]>([])
+  const [loading, setLoading] = useState(true)
+
+  const fetchChapters = useCallback(async () => {
+    if (!bookId || !userId) return
+    const { data } = await supabase
+      .from('book_chapters')
+      .select('*')
+      .eq('book_id', bookId)
+      .order('order', { ascending: true })
+    if (data) setChapters(data)
+    setLoading(false)
+  }, [bookId, userId])
+
+  useEffect(() => {
+    setChapters([])
+    setLoading(true)
+    fetchChapters()
+  }, [fetchChapters])
+
+  // 同步书籍的字数和章节数
+  const syncBookStats = useCallback(async (updatedChapters: BookChapter[]) => {
+    if (!bookId) return
+    const totalWords = updatedChapters.reduce((sum, c) => sum + countWords(c.content), 0)
+    await supabase
+      .from('books')
+      .update({ word_count: totalWords, chapter_count: updatedChapters.length })
+      .eq('id', bookId)
+  }, [bookId])
+
+  const createChapter = async () => {
+    if (!bookId || !userId) return null
+    const maxOrder = chapters.length > 0 ? Math.max(...chapters.map(c => c.order)) + 1 : 0
+    const { data, error } = await supabase
+      .from('book_chapters')
+      .insert({
+        book_id: bookId,
+        user_id: userId,
+        title: `第${chapters.length + 1}章`,
+        content: '',
+        order: maxOrder,
+      })
+      .select()
+      .single()
+    if (error || !data) return null
+    const updated = [...chapters, data]
+    setChapters(updated)
+    await syncBookStats(updated)
+    return data as BookChapter
+  }
+
+  const deleteChapter = async (id: string) => {
+    await supabase.from('book_chapters').delete().eq('id', id)
+    const updated = chapters.filter(c => c.id !== id)
+    setChapters(updated)
+    await syncBookStats(updated)
+  }
+
+  const renameChapter = (id: string, title: string) => {
+    setChapters(prev => prev.map(c => c.id === id ? { ...c, title } : c))
+  }
+
+  const updateChapterContent = (id: string, content: string) => {
+    setChapters(prev => {
+      const updated = prev.map(c => c.id === id ? { ...c, content } : c)
+      syncBookStats(updated)
+      return updated
+    })
+  }
+
+  return {
+    chapters, loading,
+    createChapter, deleteChapter, renameChapter, updateChapterContent,
+    refetch: fetchChapters
+  }
+}

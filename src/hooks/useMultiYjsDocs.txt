@@ -1,0 +1,328 @@
+import { useEffect, useRef, useState, useCallback } from 'react'
+import * as Y from 'yjs'
+import { IndexeddbPersistence } from 'y-indexeddb'
+import { supabase } from '@/lib/supabase'
+
+/** 只统计汉字 + 英文字母 + 数字 */
+function countChars(str: string): number {
+  const matches = str.match(/[\u4e00-\u9fff\u3400-\u4dbf\uf900-\ufaff]|[a-zA-Z0-9]/g)
+  return matches ? matches.length : 0
+}
+
+export interface ChapterDocState {
+  ydoc: Y.Doc
+  ready: boolean
+  saveStatus: 'saved' | 'saving' | 'offline'
+}
+
+/**
+ * 管理多个章节的 Y.Doc 生命周期
+ * 每个章节独立拥有：Y.Doc + IndexedDB persistence + Supabase broadcast channel
+ */
+export function useMultiYjsDocs(chapterIds: string[]) {
+  const [docStates, setDocStates] = useState<Map<string, ChapterDocState>>(new Map())
+  const instancesRef = useRef<Map<string, {
+    ydoc: Y.Doc
+    persistence: IndexeddbPersistence
+    channel: ReturnType<typeof supabase.channel>
+    syncTimer: ReturnType<typeof setTimeout> | null
+    sessionStartCount: number | null
+    lastSnapshotTime: number
+  }>>(new Map())
+
+  // 用 ref 追踪当前的 chapterIds，避免 cleanup 时引用过期
+  const chapterIdsRef = useRef(chapterIds)
+  chapterIdsRef.current = chapterIds
+
+  const updateDocState = useCallback((id: string, partial: Partial<ChapterDocState>) => {
+    setDocStates(prev => {
+      const next = new Map(prev)
+      const existing = next.get(id)
+      if (existing) {
+        next.set(id, { ...existing, ...partial })
+      }
+      return next
+    })
+  }, [])
+
+  useEffect(() => {
+    const currentIds = new Set(chapterIds)
+    const existingIds = new Set(instancesRef.current.keys())
+
+    // 销毁不再需要的
+    for (const id of existingIds) {
+      if (!currentIds.has(id)) {
+        destroyInstance(id)
+      }
+    }
+
+    // 创建新的
+    for (const id of chapterIds) {
+      if (!existingIds.has(id)) {
+        createInstance(id)
+      }
+    }
+
+    // cleanup: 全部销毁
+    return () => {
+      // 只在组件真正卸载时销毁全部
+    }
+  }, [chapterIds.join(',')])
+
+  // 组件卸载时清理全部
+  useEffect(() => {
+    return () => {
+      for (const id of instancesRef.current.keys()) {
+        destroyInstance(id)
+      }
+    }
+  }, [])
+
+  function createInstance(chapterId: string) {
+    const ydoc = new Y.Doc({ guid: chapterId })
+    const persistence = new IndexeddbPersistence(`chapter-${chapterId}`, ydoc)
+    const channel = supabase.channel(`chapter:${chapterId}`, {
+      config: { broadcast: { self: false } },
+    })
+
+    const instance = {
+      ydoc,
+      persistence,
+      channel,
+      syncTimer: null as ReturnType<typeof setTimeout> | null,
+      sessionStartCount: null as number | null,
+      lastSnapshotTime: 0,
+    }
+
+    instancesRef.current.set(chapterId, instance)
+
+    // 初始状态
+    setDocStates(prev => {
+      const next = new Map(prev)
+      next.set(chapterId, { ydoc, ready: false, saveStatus: 'saved' })
+      return next
+    })
+
+    // Broadcast channel 设置
+    channel
+      .on('broadcast', { event: 'sync-update' }, ({ payload }) => {
+        if (payload?.update) {
+          Y.applyUpdate(ydoc, new Uint8Array(payload.update), 'remote')
+        }
+      })
+      .on('broadcast', { event: 'sync-step1' }, ({ payload }) => {
+        if (payload?.sv) {
+          const sv = new Uint8Array(payload.sv)
+          const update = Y.encodeStateAsUpdate(ydoc, sv)
+          channel.send({
+            type: 'broadcast',
+            event: 'sync-step2',
+            payload: { update: Array.from(update) },
+          })
+        }
+      })
+      .on('broadcast', { event: 'sync-step2' }, ({ payload }) => {
+        if (payload?.update) {
+          Y.applyUpdate(ydoc, new Uint8Array(payload.update), 'remote')
+        }
+      })
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          const sv = Y.encodeStateVector(ydoc)
+          channel.send({
+            type: 'broadcast',
+            event: 'sync-step1',
+            payload: { sv: Array.from(sv) },
+          })
+        }
+      })
+
+    // IndexedDB synced → 从 Supabase 拉最新
+    persistence.on('synced', async () => {
+      try {
+        const { data } = await supabase
+          .from('book_chapters')
+          .select('ydoc_state, content, title, book_id')
+          .eq('id', chapterId)
+          .single()
+
+        if (data?.ydoc_state) {
+          const raw = data.ydoc_state as number[]
+          Y.applyUpdate(ydoc, new Uint8Array(raw), 'remote')
+        } else if (data?.content && data.content.length > 0) {
+          const yxml = ydoc.getXmlFragment('default')
+          if (yxml.length === 0) {
+            ydoc.transact(() => {
+              const paragraphs = data.content.split('\n')
+              for (const text of paragraphs) {
+                const p = new Y.XmlElement('paragraph')
+                const t = new Y.XmlText(text)
+                p.insert(0, [t])
+                yxml.push([p])
+              }
+            }, 'remote')
+          }
+        }
+
+        // 迁移标题
+        const ytitle = ydoc.getText('chapterTitle')
+        if (ytitle.length === 0 && data?.title && data.title !== '无标题') {
+          ydoc.transact(() => {
+            ytitle.insert(0, data.title)
+          }, 'remote')
+        }
+
+        // 记录初始字数
+        const plainText = extractPlainText(ydoc.getXmlFragment('default'))
+        instance.sessionStartCount = countChars(plainText)
+      } catch {
+        updateDocState(chapterId, { saveStatus: 'offline' })
+      }
+
+      updateDocState(chapterId, { ready: true })
+    })
+
+    // 监听更新
+    const handleUpdate = (update: Uint8Array, origin: unknown) => {
+      if (origin === 'remote' || origin === persistence) return
+
+      updateDocState(chapterId, { saveStatus: 'saving' })
+
+      channel.send({
+        type: 'broadcast',
+        event: 'sync-update',
+        payload: { update: Array.from(update) },
+      })
+
+      if (instance.syncTimer) clearTimeout(instance.syncTimer)
+      instance.syncTimer = setTimeout(() => saveToDb(ydoc, chapterId, instance), 2000)
+    }
+
+    ydoc.on('update', handleUpdate)
+  }
+
+  async function saveToDb(
+    doc: Y.Doc,
+    id: string,
+    instance: NonNullable<ReturnType<typeof instancesRef.current.get>>,
+  ) {
+    try {
+      const state = Y.encodeStateAsUpdate(doc)
+      const yxml = doc.getXmlFragment('default')
+      const plainContent = extractPlainText(yxml)
+      const ytitle = doc.getText('chapterTitle')
+      const titleText = ytitle.toString() || '无标题'
+
+      const { error } = await supabase
+        .from('book_chapters')
+        .update({
+          ydoc_state: Array.from(state),
+          content: plainContent,
+          title: titleText,
+        })
+        .eq('id', id)
+
+      // 记录每日码字量
+      const currentCount = countChars(plainContent)
+      if (instance.sessionStartCount !== null) {
+        const netIncrease = currentCount - instance.sessionStartCount
+        if (netIncrease > 0) {
+          const { data: chapterData } = await supabase
+            .from('book_chapters')
+            .select('book_id, user_id')
+            .eq('id', id)
+            .single()
+
+          if (chapterData) {
+            const today = new Date().toISOString().slice(0, 10)
+            await supabase.rpc('upsert_writing_log', {
+              p_user_id: chapterData.user_id,
+              p_book_id: chapterData.book_id,
+              p_chapter_id: id,
+              p_date: today,
+              p_word_count: netIncrease,
+            })
+          }
+        }
+        instance.sessionStartCount = currentCount
+      }
+
+      // 自动版本快照：至少间隔 5 分钟
+      const now = Date.now()
+      if (now - instance.lastSnapshotTime >= 5 * 60 * 1000) {
+        instance.lastSnapshotTime = now
+        const { data: chapterInfo } = await supabase
+          .from('book_chapters')
+          .select('user_id')
+          .eq('id', id)
+          .single()
+
+        if (chapterInfo) {
+          await supabase.from('chapter_snapshots').insert({
+            chapter_id: id,
+            user_id: chapterInfo.user_id,
+            content: plainContent,
+            title: titleText,
+            word_count: countChars(plainContent),
+          })
+        }
+      }
+
+      updateDocState(id, { saveStatus: error ? 'offline' : 'saved' })
+    } catch {
+      updateDocState(id, { saveStatus: 'offline' })
+    }
+  }
+
+  function destroyInstance(chapterId: string) {
+    const instance = instancesRef.current.get(chapterId)
+    if (!instance) return
+
+    if (instance.syncTimer) {
+      clearTimeout(instance.syncTimer)
+      // 最后保存一次
+      saveToDb(instance.ydoc, chapterId, instance)
+    }
+
+    instance.persistence.destroy()
+    instance.channel.unsubscribe()
+    instance.ydoc.destroy()
+    instancesRef.current.delete(chapterId)
+
+    setDocStates(prev => {
+      const next = new Map(prev)
+      next.delete(chapterId)
+      return next
+    })
+  }
+
+  return docStates
+}
+
+// ── 工具函数 ──
+
+function extractPlainText(fragment: Y.XmlFragment): string {
+  const lines: string[] = []
+  for (let i = 0; i < fragment.length; i++) {
+    const node = fragment.get(i)
+    if (node instanceof Y.XmlElement) {
+      lines.push(getTextFromElement(node))
+    } else if (node instanceof Y.XmlText) {
+      lines.push(node.toString())
+    }
+  }
+  return lines.join('\n')
+}
+
+function getTextFromElement(el: Y.XmlElement): string {
+  const parts: string[] = []
+  for (let i = 0; i < el.length; i++) {
+    const child = el.get(i)
+    if (child instanceof Y.XmlText) {
+      parts.push(child.toString())
+    } else if (child instanceof Y.XmlElement) {
+      parts.push(getTextFromElement(child))
+    }
+  }
+  return parts.join('')
+}

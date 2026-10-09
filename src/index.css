@@ -1,0 +1,243 @@
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;600;700&family=Noto+Serif+SC:wght@400;600;700&display=swap');
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+/* ══════════════════════════════════════
+   主题系统 — data-theme 属性切换
+   ══════════════════════════════════════ */
+
+/* 默认：纸白 */
+:root,
+[data-theme="light"] {
+  --bg: #f8f8f6;
+  --sidebar: #f2f1ed;
+  --paper: #ffffff;
+  --paper-shadow: rgba(0, 0, 0, 0.06);
+  --border: #e9e8e4;
+  --border-light: #f0efec;
+  --text: #1d1d1f;
+  --text-secondary: #3a3a3c;
+  --text-muted: #8e8e93;
+  --active: rgba(0, 0, 0, 0.06);
+  --active-strong: rgba(0, 0, 0, 0.1);
+  --btn: rgba(0, 0, 0, 0.04);
+  --btn-hover: rgba(0, 0, 0, 0.08);
+  --accent: #4a7dff;
+  --accent-soft: rgba(74, 125, 255, 0.08);
+  --toolbar-bg: #ffffff;
+  --sidebar-hover: rgba(0, 0, 0, 0.04);
+  --scrollbar: rgba(0, 0, 0, 0.12);
+  --selection: rgba(74, 125, 255, 0.15);
+}
+
+/* 暗色 */
+[data-theme="dark"] {
+  --bg: #1a1a1c;
+  --sidebar: #212123;
+  --paper: #2c2c2e;
+  --paper-shadow: rgba(0, 0, 0, 0.3);
+  --border: #3a3a3c;
+  --border-light: #2e2e30;
+  --text: #e5e5e7;
+  --text-secondary: #c7c7cc;
+  --text-muted: #6e6e73;
+  --active: rgba(255, 255, 255, 0.08);
+  --active-strong: rgba(255, 255, 255, 0.12);
+  --btn: rgba(255, 255, 255, 0.06);
+  --btn-hover: rgba(255, 255, 255, 0.1);
+  --accent: #6a9dff;
+  --accent-soft: rgba(106, 157, 255, 0.12);
+  --toolbar-bg: #2c2c2e;
+  --sidebar-hover: rgba(255, 255, 255, 0.05);
+  --scrollbar: rgba(255, 255, 255, 0.15);
+  --selection: rgba(106, 157, 255, 0.2);
+}
+
+/* 护眼：暖黄 */
+[data-theme="sepia"] {
+  --bg: #f4ede4;
+  --sidebar: #ece5da;
+  --paper: #faf6ef;
+  --paper-shadow: rgba(120, 90, 50, 0.08);
+  --border: #ddd5c8;
+  --border-light: #e8e1d6;
+  --text: #3d3229;
+  --text-secondary: #5a4e42;
+  --text-muted: #9a8e80;
+  --active: rgba(120, 90, 50, 0.08);
+  --active-strong: rgba(120, 90, 50, 0.14);
+  --btn: rgba(120, 90, 50, 0.06);
+  --btn-hover: rgba(120, 90, 50, 0.1);
+  --accent: #a0784c;
+  --accent-soft: rgba(160, 120, 76, 0.1);
+  --toolbar-bg: #faf6ef;
+  --sidebar-hover: rgba(120, 90, 50, 0.05);
+  --scrollbar: rgba(120, 90, 50, 0.15);
+  --selection: rgba(160, 120, 76, 0.15);
+}
+
+/* 护眼：豆沙绿 */
+[data-theme="green"] {
+  --bg: #e8efe8;
+  --sidebar: #dfe8df;
+  --paper: #f0f7f0;
+  --paper-shadow: rgba(50, 90, 50, 0.06);
+  --border: #cddacd;
+  --border-light: #d8e5d8;
+  --text: #2d3a2d;
+  --text-secondary: #3e4e3e;
+  --text-muted: #7a8e7a;
+  --active: rgba(50, 120, 50, 0.07);
+  --active-strong: rgba(50, 120, 50, 0.12);
+  --btn: rgba(50, 120, 50, 0.05);
+  --btn-hover: rgba(50, 120, 50, 0.09);
+  --accent: #5a9a5a;
+  --accent-soft: rgba(90, 154, 90, 0.1);
+  --toolbar-bg: #f0f7f0;
+  --sidebar-hover: rgba(50, 120, 50, 0.05);
+  --scrollbar: rgba(50, 90, 50, 0.15);
+  --selection: rgba(90, 154, 90, 0.15);
+}
+
+/* 护眼：淡蓝 */
+[data-theme="blue"] {
+  --bg: #e6ecf2;
+  --sidebar: #dde4ec;
+  --paper: #eef3f9;
+  --paper-shadow: rgba(40, 70, 120, 0.06);
+  --border: #ccd6e2;
+  --border-light: #d6e0ec;
+  --text: #2a3340;
+  --text-secondary: #3d4a5c;
+  --text-muted: #7a8899;
+  --active: rgba(40, 90, 160, 0.07);
+  --active-strong: rgba(40, 90, 160, 0.12);
+  --btn: rgba(40, 90, 160, 0.05);
+  --btn-hover: rgba(40, 90, 160, 0.09);
+  --accent: #5080c0;
+  --accent-soft: rgba(80, 128, 192, 0.1);
+  --toolbar-bg: #eef3f9;
+  --sidebar-hover: rgba(40, 90, 160, 0.04);
+  --scrollbar: rgba(40, 70, 120, 0.15);
+  --selection: rgba(80, 128, 192, 0.15);
+}
+
+/* ══════════════════════════════════════
+   全局基础
+   ══════════════════════════════════════ */
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Noto Sans SC', -apple-system, 'PingFang SC', BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  transition: background 0.35s ease, color 0.35s ease;
+}
+
+textarea, input, button {
+  font-family: inherit;
+}
+
+textarea::placeholder, input::placeholder {
+  color: var(--text-muted);
+  opacity: 0.6;
+}
+
+::selection {
+  background: var(--selection);
+}
+
+/* ══════════════════════════════════════
+   滚动条（细致优雅）
+   ══════════════════════════════════════ */
+
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--scrollbar);
+  border-radius: 3px;
+  transition: background 0.2s;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}
+
+/* Firefox */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar) transparent;
+}
+
+/* ══════════════════════════════════════
+   动画过渡（石墨风格 — 柔和流畅）
+   ══════════════════════════════════════ */
+
+/* 通用过渡 */
+button, a {
+  transition: opacity 0.2s ease, background 0.2s ease, color 0.2s ease, transform 0.15s ease;
+}
+
+button:hover {
+  opacity: 0.85;
+}
+
+button:active {
+  transform: scale(0.97);
+}
+
+/* 输入框聚焦 */
+textarea:focus, input:focus {
+  outline: none;
+}
+
+/* range slider 美化 */
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 3px;
+  background: var(--border);
+  border-radius: 2px;
+  outline: none;
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  cursor: pointer;
+  border: 2px solid var(--paper);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+  transition: background 0.15s, transform 0.15s;
+}
+
+input[type="range"]::-webkit-slider-thumb:hover {
+  background: var(--text);
+  transform: scale(1.2);
+}
+
+input[type="range"]::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  cursor: pointer;
+  border: 2px solid var(--paper);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+}

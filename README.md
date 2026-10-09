@@ -1,4 +1,4 @@
-# Inke3-Write
+# Inke3-Write 银客写作
 
 ✨ 基于 inke3 生态构建的轻量级写作辅助与排版工具。
 
